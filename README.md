@@ -1,4 +1,4 @@
-# Koren Course LMS Backend
+ # Koren Course LMS Backend
 
 A secure PHP-based RESTful API backend for Learning Management System (LMS) with user authentication.
 
@@ -133,4 +133,4 @@ console.log(loginData);
 
 ## License
 
-Educational purposes
+Educational purposes 
