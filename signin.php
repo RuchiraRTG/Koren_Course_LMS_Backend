@@ -13,6 +13,10 @@ require_once 'includes/functions.php';
 
 // Start session
 startSecureSession();
+// Ensure DB schema is initialized (including role column)
+if (function_exists('initializeDatabase')) {
+    initializeDatabase();
+}
 
 // Initialize response array
 $response = [
@@ -58,7 +62,7 @@ if (empty($response['errors'])) {
         $conn = getDBConnection();
         
         // Get user from database
-        $stmt = $conn->prepare("SELECT id, first_name, last_name, email, nic_number, phone_number, password, is_active, created_at FROM users WHERE email = ?");
+    $stmt = $conn->prepare("SELECT id, first_name, last_name, email, nic_number, phone_number, password, is_active, role, created_at FROM users WHERE email = ?");
         $stmt->bind_param("s", $email);
         $stmt->execute();
         $result = $stmt->get_result();
@@ -74,9 +78,11 @@ if (empty($response['errors'])) {
             // Verify password
             elseif (verifyPassword($password, $user['password'])) {
                 // Password is correct, create session
+                session_regenerate_id(true);
                 $_SESSION['user_id'] = $user['id'];
                 $_SESSION['user_email'] = $user['email'];
                 $_SESSION['user_name'] = $user['first_name'] . ' ' . $user['last_name'];
+                $_SESSION['user_role'] = $user['role'] ?? 'user';
                 $_SESSION['session_token'] = generateSessionToken();
                 
                 // Update last login time
@@ -88,6 +94,9 @@ if (empty($response['errors'])) {
                 // Set success response
                 $response['success'] = true;
                 $response['message'] = 'Login successful!';
+                // Determine redirect based on role
+                $redirectUrl = ($user['role'] ?? 'user') === 'admin' ? 'admin/index.php' : 'home.php';
+
                 $response['data'] = [
                     'user_id' => $user['id'],
                     'email' => $user['email'],
@@ -97,7 +106,8 @@ if (empty($response['errors'])) {
                     'phone_number' => $user['phone_number'],
                     'nic_number' => $user['nic_number'],
                     'session_token' => $_SESSION['session_token'],
-                    'redirect_url' => 'home.php'
+                    'role' => $_SESSION['user_role'],
+                    'redirect_url' => $redirectUrl
                 ];
             } else {
                 $response['message'] = "Invalid email or password";

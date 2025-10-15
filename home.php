@@ -16,6 +16,11 @@ if (!isLoggedIn()) {
     redirect('signin.php');
 }
 
+// If admin accidentally lands here, redirect to admin dashboard
+if (function_exists('isAdmin') && isAdmin()) {
+    redirect('admin/index.php');
+}
+
 // Get user information
 $userId = $_SESSION['user_id'];
 $userName = $_SESSION['user_name'];

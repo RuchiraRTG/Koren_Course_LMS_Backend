@@ -119,7 +119,7 @@ if (empty($response['errors'])) {
         if (empty($response['errors'])) {
             $hashedPassword = hashPassword($password);
             
-            $stmt = $conn->prepare("INSERT INTO users (first_name, last_name, nic_number, phone_number, email, password) VALUES (?, ?, ?, ?, ?, ?)");
+            $stmt = $conn->prepare("INSERT INTO users (first_name, last_name, nic_number, phone_number, email, password, role) VALUES (?, ?, ?, ?, ?, ?, 'user')");
             $stmt->bind_param("ssssss", $firstName, $lastName, $nicNumber, $phoneNumber, $email, $hashedPassword);
             
             if ($stmt->execute()) {
