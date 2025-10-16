@@ -28,6 +28,11 @@ switch ($method) {
         handleGet($conn, $action);
         break;
     case 'POST':
+        // Support DELETE via POST with action=delete for clients that cannot send DELETE
+        if (isset($_GET['action']) && strtolower($_GET['action']) === 'delete') {
+            handleDelete($conn);
+            break;
+        }
         handlePost($conn);
         break;
     case 'PUT':
@@ -516,23 +521,42 @@ function handlePut($conn) {
 
 // Handle DELETE requests (Soft delete)
 function handleDelete($conn) {
-    $id = isset($_GET['id']) ? intval($_GET['id']) : 0;
-    
+    // Accept id from query string, JSON body, or form body
+    $id = 0;
+    if (isset($_GET['id'])) {
+        $id = intval($_GET['id']);
+    }
+    if ($id <= 0) {
+        $raw = file_get_contents('php://input');
+        if (!empty($raw)) {
+            $data = json_decode($raw, true);
+            if (json_last_error() === JSON_ERROR_NONE && isset($data['id'])) {
+                $id = intval($data['id']);
+            }
+        }
+    }
+    if ($id <= 0 && isset($_POST['id'])) {
+        $id = intval($_POST['id']);
+    }
+
     if ($id <= 0) {
         http_response_code(400);
-        echo json_encode(['success' => false, 'message' => 'Invalid question ID']);
+        echo json_encode(['success' => false, 'message' => 'Invalid or missing question ID']);
         return;
     }
-    
+
     // Soft delete - just mark as inactive
     $sql = "UPDATE questions SET is_active = 0 WHERE id = ?";
     $stmt = $conn->prepare($sql);
     $stmt->bind_param('i', $id);
-    
+
     if ($stmt->execute()) {
+        $affected = $stmt->affected_rows;
         echo json_encode([
             'success' => true,
-            'message' => 'Question deleted successfully'
+            'message' => $affected > 0 ? 'Question deleted successfully' : 'No change (already deleted or not found)',
+            'affected' => $affected,
+            'id' => $id
         ]);
     } else {
         http_response_code(500);
@@ -541,7 +565,7 @@ function handleDelete($conn) {
             'message' => 'Failed to delete question'
         ]);
     }
-    
+
     $stmt->close();
 }
 

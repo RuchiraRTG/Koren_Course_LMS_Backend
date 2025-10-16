@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Exam API Tester</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            color: white;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .test-section {
+            background: white;
+            border-radius: 10px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+        
+        .test-section h2 {
+            color: #667eea;
+            margin-bottom: 15px;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+        
+        .button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+            transition: transform 0.2s;
+        }
+        
+        .button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+        
+        .button:active {
+            transform: translateY(0);
+        }
+        
+        .result {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 15px;
+            margin-top: 15px;
+            max-height: 400px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+        }
+        
+        .success {
+            border-left: 4px solid #28a745;
+            background: #d4edda;
+        }
+        
+        .error {
+            border-left: 4px solid #dc3545;
+            background: #f8d7da;
+        }
+        
+        .status {
+            display: inline-block;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+        
+        .status-success {
+            background: #28a745;
+            color: white;
+        }
+        
+        .status-error {
+            background: #dc3545;
+            color: white;
+        }
+        
+        .status-pending {
+            background: #ffc107;
+            color: black;
+        }
+        
+        pre {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        
+        .info-box {
+            background: #e7f3ff;
+            border-left: 4px solid #2196F3;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+        }
+        
+        .warning-box {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎓 Exam API Tester</h1>
+        
+        <div class="info-box">
+            <strong>📋 Instructions:</strong><br>
+            1. Click each test button in order<br>
+            2. Green results = Success ✅<br>
+            3. Red results = Error ❌<br>
+            4. Make sure XAMPP is running and database is set up
+        </div>
+        
+        <!-- Database Check -->
+        <div class="test-section">
+            <h2>1️⃣ Database Connection Test</h2>
+            <button class="button" onclick="testDatabase()">Test Database</button>
+            <div id="db-result" class="result" style="display: none;"></div>
+        </div>
+        
+        <!-- Get All Exams -->
+        <div class="test-section">
+            <h2>2️⃣ Get All Exams</h2>
+            <button class="button" onclick="getAllExams()">Get All Exams</button>
+            <div id="exams-result" class="result" style="display: none;"></div>
+        </div>
+        
+        <!-- Get Students -->
+        <div class="test-section">
+            <h2>3️⃣ Get All Students</h2>
+            <button class="button" onclick="getAllStudents()">Get All Students</button>
+            <div id="students-result" class="result" style="display: none;"></div>
+        </div>
+        
+        <!-- Get Batches -->
+        <div class="test-section">
+            <h2>4️⃣ Get All Batches</h2>
+            <button class="button" onclick="getAllBatches()">Get All Batches</button>
+            <div id="batches-result" class="result" style="display: none;"></div>
+        </div>
+        
+        <!-- Create Exam -->
+        <div class="test-section">
+            <h2>5️⃣ Create Test Exam</h2>
+            <div class="warning-box">
+                ⚠️ <strong>Important:</strong> Make sure you have questions in your database with IDs 8, 9, 11, 12, etc.
+                If not, this test will fail. Check your questions table first!
+            </div>
+            <button class="button" onclick="createTestExam()">Create Test Exam</button>
+            <div id="create-result" class="result" style="display: none;"></div>
+        </div>
+        
+        <!-- Run All Tests -->
+        <div class="test-section">
+            <h2>🚀 Run All Tests</h2>
+            <button class="button" onclick="runAllTests()" style="font-size: 18px; padding: 15px 30px;">
+                ▶️ Run All Tests
+            </button>
+            <div id="all-tests-result" class="result" style="display: none;"></div>
+        </div>
+    </div>
+    
+    <script>
+        const API_URL = 'http://localhost/exam.php';
+        
+        function showResult(elementId, content, isSuccess) {
+            const element = document.getElementById(elementId);
+            element.style.display = 'block';
+            element.className = isSuccess ? 'result success' : 'result error';
+            element.innerHTML = content;
+        }
+        
+        async function testDatabase() {
+            try {
+                const response = await fetch(API_URL + '?action=all');
+                const data = await response.json();
+                
+                if (data.success !== undefined) {
+                    showResult('db-result', 
+                        '<strong>✅ Database Connection: SUCCESS</strong><br><br>' +
+                        'API is responding correctly.<br>' +
+                        'Database tables are accessible.<br>' +
+                        JSON.stringify(data, null, 2), 
+                        true
+                    );
+                } else {
+                    showResult('db-result', 
+                        '<strong>❌ Database Connection: FAILED</strong><br><br>' +
+                        'Unexpected response format.<br>' +
+                        JSON.stringify(data, null, 2), 
+                        false
+                    );
+                }
+            } catch (error) {
+                showResult('db-result', 
+                    '<strong>❌ Database Connection: ERROR</strong><br><br>' +
+                    'Error: ' + error.message + '<br><br>' +
+                    'Make sure XAMPP is running!', 
+                    false
+                );
+            }
+        }
+        
+        async function getAllExams() {
+            try {
+                const response = await fetch(API_URL + '?action=all');
+                const data = await response.json();
+                
+                if (data.success) {
+                    showResult('exams-result', 
+                        '<strong>✅ Get All Exams: SUCCESS</strong><br><br>' +
+                        'Found ' + data.count + ' exam(s)<br><br>' +
+                        '<pre>' + JSON.stringify(data, null, 2) + '</pre>', 
+                        true
+                    );
+                } else {
+                    showResult('exams-result', 
+                        '<strong>⚠️ Get All Exams: NO EXAMS</strong><br><br>' +
+                        'Response: ' + data.message + '<br><br>' +
+                        '<pre>' + JSON.stringify(data, null, 2) + '</pre>', 
+                        true
+                    );
+                }
+            } catch (error) {
+                showResult('exams-result', 
+                    '<strong>❌ Get All Exams: ERROR</strong><br><br>' +
+                    'Error: ' + error.message, 
+                    false
+                );
+            }
+        }
+        
+        async function getAllStudents() {
+            try {
+                const response = await fetch(API_URL + '?action=students');
+                const data = await response.json();
+                
+                if (data.success) {
+                    showResult('students-result', 
+                        '<strong>✅ Get All Students: SUCCESS</strong><br><br>' +
+                        'Found ' + data.count + ' student(s)<br><br>' +
+                        '<pre>' + JSON.stringify(data, null, 2) + '</pre>', 
+                        true
+                    );
+                } else {
+                    showResult('students-result', 
+                        '<strong>❌ Get All Students: FAILED</strong><br><br>' +
+                        '<pre>' + JSON.stringify(data, null, 2) + '</pre>', 
+                        false
+                    );
+                }
+            } catch (error) {
+                showResult('students-result', 
+                    '<strong>❌ Get All Students: ERROR</strong><br><br>' +
+                    'Error: ' + error.message, 
+                    false
+                );
+            }
+        }
+        
+        async function getAllBatches() {
+            try {
+                const response = await fetch(API_URL + '?action=batches');
+                const data = await response.json();
+                
+                if (data.success) {
+                    showResult('batches-result', 
+                        '<strong>✅ Get All Batches: SUCCESS</strong><br><br>' +
+                        'Found ' + data.count + ' batch(es)<br><br>' +
+                        '<pre>' + JSON.stringify(data, null, 2) + '</pre>', 
+                        true
+                    );
+                } else {
+                    showResult('batches-result', 
+                        '<strong>⚠️ Get All Batches: NO BATCHES</strong><br><br>' +
+                        'No batches found in users table.<br>' +
+                        'You may need to add batch data to your students.<br><br>' +
+                        '<pre>' + JSON.stringify(data, null, 2) + '</pre>', 
+                        true
+                    );
+                }
+            } catch (error) {
+                showResult('batches-result', 
+                    '<strong>❌ Get All Batches: ERROR</strong><br><br>' +
+                    'Error: ' + error.message, 
+                    false
+                );
+            }
+        }
+        
+        async function createTestExam() {
+            const examData = {
+                examName: "Test Exam - " + new Date().toLocaleString(),
+                description: "Automated test exam",
+                examType: "both",
+                duration: "60",
+                numberOfQuestions: "20",
+                totalMarks: "100",
+                eligibilityType: "batch",
+                selectedBatch: "Batch A",
+                selectedQuestions: [8, 9, 11, 12],
+                mcqCount: 2,
+                voiceCount: 2
+            };
+            
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(examData)
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showResult('create-result', 
+                        '<strong>✅ Create Exam: SUCCESS</strong><br><br>' +
+                        data.message + '<br><br>' +
+                        '<pre>' + JSON.stringify(data, null, 2) + '</pre>', 
+                        true
+                    );
+                } else {
+                    showResult('create-result', 
+                        '<strong>❌ Create Exam: FAILED</strong><br><br>' +
+                        'Error: ' + data.message + '<br><br>' +
+                        'This might be because:<br>' +
+                        '• Questions with IDs 8,9,11,12 don\'t exist<br>' +
+                        '• Batch "Batch A" doesn\'t exist<br>' +
+                        '• Other validation error<br><br>' +
+                        '<pre>' + JSON.stringify(data, null, 2) + '</pre>', 
+                        false
+                    );
+                }
+            } catch (error) {
+                showResult('create-result', 
+                    '<strong>❌ Create Exam: ERROR</strong><br><br>' +
+                    'Error: ' + error.message, 
+                    false
+                );
+            }
+        }
+        
+        async function runAllTests() {
+            const resultDiv = document.getElementById('all-tests-result');
+            resultDiv.style.display = 'block';
+            resultDiv.className = 'result';
+            resultDiv.innerHTML = '<strong>🚀 Running all tests...</strong><br><br>';
+            
+            const tests = [
+                { name: 'Database Connection', func: testDatabase },
+                { name: 'Get All Exams', func: getAllExams },
+                { name: 'Get All Students', func: getAllStudents },
+                { name: 'Get All Batches', func: getAllBatches }
+            ];
+            
+            for (const test of tests) {
+                resultDiv.innerHTML += `⏳ Running: ${test.name}...<br>`;
+                await test.func();
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+            
+            resultDiv.innerHTML += '<br><strong>✅ All tests completed!</strong><br>';
+            resultDiv.innerHTML += 'Check individual test results above for details.';
+        }
+    </script>
+</body>
+</html>
