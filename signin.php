@@ -61,15 +61,41 @@ if (empty($response['errors'])) {
     try {
         $conn = getDBConnection();
         
-        // Get user from database
-    $stmt = $conn->prepare("SELECT id, first_name, last_name, email, nic_number, phone_number, password, is_active, role, created_at FROM users WHERE email = ?");
+        // First, try to get user from users table
+        $stmt = $conn->prepare("SELECT id, first_name, last_name, email, nic_number, phone_number, password, is_active, role, created_at FROM users WHERE email = ?");
         $stmt->bind_param("s", $email);
         $stmt->execute();
         $result = $stmt->get_result();
         
+        $userFound = false;
+        $userType = null;
+        
         if ($result->num_rows === 1) {
             $user = $result->fetch_assoc();
+            $userFound = true;
+            $userType = 'user';
+        }
+        $stmt->close();
+        
+        // If not found in users table, check students table
+        if (!$userFound) {
+            $stmt = $conn->prepare("SELECT id, first_name, last_name, email, nic_number, phone, password, is_active, batch_number, created_at FROM students WHERE email = ?");
+            $stmt->bind_param("s", $email);
+            $stmt->execute();
+            $result = $stmt->get_result();
             
+            if ($result->num_rows === 1) {
+                $user = $result->fetch_assoc();
+                $userFound = true;
+                $userType = 'student';
+                // Map 'phone' to 'phone_number' for consistency
+                $user['phone_number'] = $user['phone'];
+                $user['role'] = 'student';
+            }
+            $stmt->close();
+        }
+        
+        if ($userFound) {
             // Check if account is active
             if ($user['is_active'] == 0) {
                 $response['message'] = "Your account has been deactivated. Please contact support.";
@@ -83,19 +109,32 @@ if (empty($response['errors'])) {
                 $_SESSION['user_email'] = $user['email'];
                 $_SESSION['user_name'] = $user['first_name'] . ' ' . $user['last_name'];
                 $_SESSION['user_role'] = $user['role'] ?? 'user';
+                $_SESSION['user_type'] = $userType; // Track whether it's a user or student
                 $_SESSION['session_token'] = generateSessionToken();
                 
-                // Update last login time
-                $updateStmt = $conn->prepare("UPDATE users SET last_login = NOW() WHERE id = ?");
-                $updateStmt->bind_param("i", $user['id']);
-                $updateStmt->execute();
-                $updateStmt->close();
+                // Add batch_number to session if student
+                if ($userType === 'student' && isset($user['batch_number'])) {
+                    $_SESSION['batch_number'] = $user['batch_number'];
+                }
+                
+                // Update last login time based on user type
+                if ($userType === 'user') {
+                    $updateStmt = $conn->prepare("UPDATE users SET last_login = NOW() WHERE id = ?");
+                    $updateStmt->bind_param("i", $user['id']);
+                    $updateStmt->execute();
+                    $updateStmt->close();
+                }
+                // Note: students table doesn't have last_login column, can be added if needed
                 
                 // Set success response
                 $response['success'] = true;
                 $response['message'] = 'Login successful!';
+                
                 // Determine redirect based on role
-                $redirectUrl = ($user['role'] ?? 'user') === 'admin' ? 'admin/index.php' : 'home.php';
+                $redirectUrl = 'home.php'; // Default for students and regular users
+                if ($userType === 'user' && ($user['role'] ?? 'user') === 'admin') {
+                    $redirectUrl = 'admin/index.php';
+                }
 
                 $response['data'] = [
                     'user_id' => $user['id'],
@@ -107,8 +146,14 @@ if (empty($response['errors'])) {
                     'nic_number' => $user['nic_number'],
                     'session_token' => $_SESSION['session_token'],
                     'role' => $_SESSION['user_role'],
+                    'user_type' => $userType,
                     'redirect_url' => $redirectUrl
                 ];
+                
+                // Add batch_number to response data if student
+                if ($userType === 'student' && isset($user['batch_number'])) {
+                    $response['data']['batch_number'] = $user['batch_number'];
+                }
             } else {
                 $response['message'] = "Invalid email or password";
                 $response['errors'][] = "Invalid credentials";
@@ -118,7 +163,6 @@ if (empty($response['errors'])) {
             $response['errors'][] = "Invalid credentials";
         }
         
-        $stmt->close();
         $conn->close();
     } catch (Exception $e) {
         $response['message'] = "An error occurred during login";

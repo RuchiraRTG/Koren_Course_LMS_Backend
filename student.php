@@ -58,6 +58,7 @@ function initializeStudentTable($conn) {
         email VARCHAR(150) NOT NULL UNIQUE,
         phone VARCHAR(20) NOT NULL,
         nic_number VARCHAR(20) NOT NULL UNIQUE,
+        password VARCHAR(255) NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         is_active TINYINT(1) DEFAULT 1,
@@ -68,6 +69,12 @@ function initializeStudentTable($conn) {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
     
     $conn->query($sql);
+    
+    // Add password column if it doesn't exist (for existing tables)
+    $checkColumn = $conn->query("SHOW COLUMNS FROM students LIKE 'password'");
+    if ($checkColumn->num_rows == 0) {
+        $conn->query("ALTER TABLE students ADD COLUMN password VARCHAR(255) NOT NULL DEFAULT ''");
+    }
 }
 
 // Handle GET requests
@@ -248,20 +255,24 @@ function handlePost($conn) {
         return;
     }
     
+    // Hash the password
+    $hashedPassword = password_hash($input['password'], PASSWORD_DEFAULT);
+    
     // Insert student
     $sql = "INSERT INTO students (
-        first_name, last_name, batch_number, email, phone, nic_number
-    ) VALUES (?, ?, ?, ?, ?, ?)";
+        first_name, last_name, batch_number, email, phone, nic_number, password
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)";
     
     $stmt = $conn->prepare($sql);
     $stmt->bind_param(
-        'ssssss',
+        'sssssss',
         $input['firstName'],
         $input['lastName'],
         $input['batchNumber'],
         $input['email'],
         $input['phone'],
-        $input['nicNumber']
+        $input['nicNumber'],
+        $hashedPassword
     );
     
     if ($stmt->execute()) {
@@ -333,20 +344,32 @@ function handlePut($conn) {
     // Update student
     $sql = "UPDATE students SET 
         first_name = ?, last_name = ?, batch_number = ?, 
-        email = ?, phone = ?, nic_number = ?
-        WHERE id = ?";
+        email = ?, phone = ?, nic_number = ?";
     
-    $stmt = $conn->prepare($sql);
-    $stmt->bind_param(
-        'ssssssi',
+    $params = [
         $input['firstName'],
         $input['lastName'],
         $input['batchNumber'],
         $input['email'],
         $input['phone'],
-        $input['nicNumber'],
-        $studentId
-    );
+        $input['nicNumber']
+    ];
+    $types = 'ssssss';
+    
+    // Update password only if provided
+    if (isset($input['password']) && !empty($input['password'])) {
+        $sql .= ", password = ?";
+        $hashedPassword = password_hash($input['password'], PASSWORD_DEFAULT);
+        $params[] = $hashedPassword;
+        $types .= 's';
+    }
+    
+    $sql .= " WHERE id = ?";
+    $params[] = $studentId;
+    $types .= 'i';
+    
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param($types, ...$params);
     
     if ($stmt->execute()) {
         if ($stmt->affected_rows > 0) {
@@ -461,6 +484,18 @@ function validateStudentData($data) {
     // Validate NIC format (Sri Lankan: old 9 digits + V/X or new 12 digits)
     if (!preg_match('/^(\d{9}[VvXx]|\d{12})$/', $data['nicNumber'])) {
         return ['valid' => false, 'message' => 'Invalid NIC number format'];
+    }
+    
+    // Password is required only for new students (when id is not set)
+    if (!isset($data['id']) || empty($data['id'])) {
+        if (empty($data['password'])) {
+            return ['valid' => false, 'message' => 'Password is required'];
+        }
+        
+        // Validate password strength
+        if (strlen($data['password']) < 6) {
+            return ['valid' => false, 'message' => 'Password must be at least 6 characters long'];
+        }
     }
     
     return ['valid' => true];

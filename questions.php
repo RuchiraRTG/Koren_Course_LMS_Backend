@@ -55,7 +55,7 @@ function initializeQuestionsTables($conn) {
         question_text TEXT NOT NULL,
         question_type ENUM('mcq', 'voice') NOT NULL DEFAULT 'mcq',
         question_format ENUM('normal', 'image') DEFAULT 'normal',
-        question_image VARCHAR(500) NULL,
+        question_image VARCHAR(255) NULL COMMENT 'File path to question image',
         answer_type ENUM('single', 'multiple') NOT NULL DEFAULT 'single',
         audio_link VARCHAR(500) NULL,
         difficulty ENUM('Beginner', 'Intermediate', 'Advanced') NOT NULL DEFAULT 'Beginner',
@@ -77,7 +77,7 @@ function initializeQuestionsTables($conn) {
         id INT(11) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
         question_id INT(11) UNSIGNED NOT NULL,
         option_text TEXT NOT NULL,
-        option_image VARCHAR(500) NULL,
+        option_image VARCHAR(255) NULL COMMENT 'File path to option image',
         option_order TINYINT(1) NOT NULL DEFAULT 0 COMMENT '0=A, 1=B, 2=C, 3=D',
         is_correct TINYINT(1) DEFAULT 0,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -97,7 +97,97 @@ function initializeQuestionsTables($conn) {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
     
     $conn->query($sql);
+
+    // Create mcq_question_answers table (separate table for MCQ correct answers)
+    $sql = "CREATE TABLE IF NOT EXISTS mcq_question_answers (
+        id INT(11) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        question_id INT(11) UNSIGNED NOT NULL,
+        answer_indices TEXT NOT NULL COMMENT 'JSON array of correct option indices',
+        answer_texts TEXT NULL COMMENT 'JSON array of correct option texts',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_question (question_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+    
+    $conn->query($sql);
 }
+
+// Helper function to save base64 image to file
+function saveBase64Image($base64String, $folder = 'questions') {
+    // Check if it's a valid base64 image
+    if (empty($base64String) || $base64String === 'null' || $base64String === null) {
+        return null;
+    }
+    
+    // Check if it's already a file path (not base64)
+    if (!preg_match('/^data:image\/(\w+);base64,/', $base64String)) {
+        // If it's already a file path, return it
+        if (strpos($base64String, 'uploads/') === 0) {
+            return $base64String;
+        }
+        return null;
+    }
+    
+    // Extract the image data
+    preg_match('/^data:image\/(\w+);base64,/', $base64String, $matches);
+    $imageType = $matches[1] ?? 'png';
+    $base64String = substr($base64String, strpos($base64String, ',') + 1);
+    $imageData = base64_decode($base64String);
+    
+    if ($imageData === false) {
+        return null;
+    }
+    
+    // Create upload directory if it doesn't exist
+    $uploadDir = __DIR__ . '/uploads/images/' . $folder;
+    if (!file_exists($uploadDir)) {
+        mkdir($uploadDir, 0755, true);
+    }
+    
+    // Generate unique filename
+    $filename = uniqid('img_', true) . '_' . time() . '.' . $imageType;
+    $filepath = $uploadDir . '/' . $filename;
+    
+    // Save the file
+    if (file_put_contents($filepath, $imageData)) {
+        // Return relative path
+        return 'uploads/images/' . $folder . '/' . $filename;
+    }
+    
+    return null;
+}
+
+// Helper function to delete image file
+function deleteImageFile($imagePath) {
+    if (empty($imagePath) || $imagePath === null) {
+        return;
+    }
+    
+    $filepath = __DIR__ . '/' . $imagePath;
+    if (file_exists($filepath)) {
+        unlink($filepath);
+    }
+}
+
+// Helper function to convert image path to full URL
+function getImageUrl($imagePath) {
+    if (empty($imagePath) || $imagePath === null) {
+        return null;
+    }
+    
+    // If it's already a full URL, return it
+    if (strpos($imagePath, 'http://') === 0 || strpos($imagePath, 'https://') === 0) {
+        return $imagePath;
+    }
+    
+    // Get the protocol and host
+    $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http';
+    $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+    
+    // Return full URL
+    return $protocol . '://' . $host . '/' . $imagePath;
+}
+
 
 // Handle GET requests
 function handleGet($conn, $action) {
@@ -133,7 +223,7 @@ function getAllQuestions($conn) {
     
     if (!empty($type)) {
         $type = $conn->real_escape_string($type);
-        $sql .= " AND questionType = '$type'";
+        $sql .= " AND question_type = '$type'";
     }
     
     if (!empty($difficulty)) {
@@ -153,13 +243,29 @@ function getAllQuestions($conn) {
     if ($result) {
         $questions = [];
         while ($row = $result->fetch_assoc()) {
-            $question = $row;
+            // Transform snake_case to camelCase for frontend compatibility
+            $question = [
+                'id' => $row['id'],
+                'questionText' => $row['question_text'],
+                'questionType' => $row['question_type'],
+                'questionFormat' => $row['question_format'],
+                'questionImage' => getImageUrl($row['question_image']),
+                'answerType' => $row['answer_type'],
+                'audioLink' => $row['audio_link'],
+                'timeLimit' => $row['time_limit'],
+                'difficulty' => $row['difficulty'],
+                'category' => $row['category'],
+                'isActive' => $row['is_active'],
+                'createdBy' => $row['created_by'],
+                'createdAt' => $row['created_at'],
+                'updatedAt' => $row['updated_at']
+            ];
             
             // Get options for this question
             $question['options'] = getQuestionOptions($conn, $row['id']);
             
             // Get correct answers array based on question type
-            if ($row['questionType'] === 'mcq') {
+            if ($row['question_type'] === 'mcq') {
                 $question['correctAnswers'] = getMCQCorrectAnswers($conn, $row['id']);
             } else {
                 $question['correctAnswers'] = [];
@@ -199,13 +305,31 @@ function getQuestionById($conn) {
     $result = $stmt->get_result();
     
     if ($result->num_rows > 0) {
-        $question = $result->fetch_assoc();
+        $row = $result->fetch_assoc();
+        
+        // Transform snake_case to camelCase for frontend compatibility
+        $question = [
+            'id' => $row['id'],
+            'questionText' => $row['question_text'],
+            'questionType' => $row['question_type'],
+            'questionFormat' => $row['question_format'],
+            'questionImage' => getImageUrl($row['question_image']),
+            'answerType' => $row['answer_type'],
+            'audioLink' => $row['audio_link'],
+            'timeLimit' => $row['time_limit'],
+            'difficulty' => $row['difficulty'],
+            'category' => $row['category'],
+            'isActive' => $row['is_active'],
+            'createdBy' => $row['created_by'],
+            'createdAt' => $row['created_at'],
+            'updatedAt' => $row['updated_at']
+        ];
         
         // Get options
         $question['options'] = getQuestionOptions($conn, $id);
         
         // Get correct answers based on question type
-        if ($question['questionType'] === 'mcq') {
+        if ($row['question_type'] === 'mcq') {
             $question['correctAnswers'] = getMCQCorrectAnswers($conn, $id);
         } else {
             $question['correctAnswers'] = [];
@@ -235,10 +359,10 @@ function getQuestionStats($conn) {
     $stats['total'] = $result->fetch_assoc()['total'];
     
     // By type
-        $result = $conn->query("SELECT questionType, COUNT(*) as count FROM questions WHERE is_active = 1 GROUP BY questionType");
+        $result = $conn->query("SELECT question_type, COUNT(*) as count FROM questions WHERE is_active = 1 GROUP BY question_type");
     $stats['by_type'] = [];
     while ($row = $result->fetch_assoc()) {
-           $stats['by_type'][$row['questionType']] = $row['count'];
+           $stats['by_type'][$row['question_type']] = $row['count'];
     }
     
     // By difficulty
@@ -280,6 +404,22 @@ function handlePost($conn) {
     $conn->begin_transaction();
     
     try {
+        // Process question image if it's base64
+        $questionImagePath = null;
+        if (!empty($input['questionImage'])) {
+            $questionImagePath = saveBase64Image($input['questionImage'], 'questions');
+        }
+        
+        // Process option images if they're base64
+        if (!empty($input['options']) && is_array($input['options'])) {
+            foreach ($input['options'] as $index => $option) {
+                if (!empty($option['image'])) {
+                    $savedPath = saveBase64Image($option['image'], 'options');
+                    $input['options'][$index]['image'] = $savedPath;
+                }
+            }
+        }
+        
         // timeLimit: voice uses provided (validated 5-300), MCQ uses 0
         $timeLimit = 0;
         if ($input['questionType'] === 'voice' && isset($input['timeLimit'])) {
@@ -288,8 +428,8 @@ function handlePost($conn) {
         
         // Insert question
         $sql = "INSERT INTO questions (
-              questionText, questionType, questionFormat, questionImage, 
-              answerType, audioLink, difficulty, category, timeLimit
+              question_text, question_type, question_format, question_image, 
+              answer_type, audio_link, difficulty, category, time_limit
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
         
         $stmt = $conn->prepare($sql);
@@ -298,7 +438,7 @@ function handlePost($conn) {
             $input['questionText'],
             $input['questionType'],
             $input['questionFormat'],
-            $input['questionImage'],
+            $questionImagePath,
             $input['answerType'],
             $input['audioLink'],
             $input['difficulty'],
@@ -317,7 +457,7 @@ function handlePost($conn) {
         if (!empty($input['options']) && is_array($input['options'])) {
             foreach ($input['options'] as $index => $option) {
                 $sql = "INSERT INTO question_options (
-                    question_id, text, image, option_order
+                    question_id, option_text, option_image, option_order
                 ) VALUES (?, ?, ?, ?)";
                 $stmt = $conn->prepare($sql);
                 $stmt->bind_param(
@@ -411,6 +551,54 @@ function handlePut($conn) {
     $conn->begin_transaction();
     
     try {
+        // Get existing question image to delete if changed
+        $existingImageSql = "SELECT question_image FROM questions WHERE id = ?";
+        $existingStmt = $conn->prepare($existingImageSql);
+        $existingStmt->bind_param('i', $questionId);
+        $existingStmt->execute();
+        $existingResult = $existingStmt->get_result();
+        $existingQuestion = $existingResult->fetch_assoc();
+        $existingStmt->close();
+        
+        // Process question image if it's base64
+        $questionImagePath = $input['questionImage'];
+        if (!empty($input['questionImage']) && preg_match('/^data:image\/(\w+);base64,/', $input['questionImage'])) {
+            // Delete old image if exists
+            if (!empty($existingQuestion['question_image'])) {
+                deleteImageFile($existingQuestion['question_image']);
+            }
+            $questionImagePath = saveBase64Image($input['questionImage'], 'questions');
+        }
+        
+        // Get existing option images to delete if changed
+        $existingOptionsSql = "SELECT option_image FROM question_options WHERE question_id = ?";
+        $existingOptionsStmt = $conn->prepare($existingOptionsSql);
+        $existingOptionsStmt->bind_param('i', $questionId);
+        $existingOptionsStmt->execute();
+        $existingOptionsResult = $existingOptionsStmt->get_result();
+        $existingOptionImages = [];
+        while ($row = $existingOptionsResult->fetch_assoc()) {
+            if (!empty($row['option_image'])) {
+                $existingOptionImages[] = $row['option_image'];
+            }
+        }
+        $existingOptionsStmt->close();
+        
+        // Process option images if they're base64
+        if (!empty($input['options']) && is_array($input['options'])) {
+            foreach ($input['options'] as $index => $option) {
+                if (!empty($option['image']) && preg_match('/^data:image\/(\w+);base64,/', $option['image'])) {
+                    $savedPath = saveBase64Image($option['image'], 'options');
+                    $input['options'][$index]['image'] = $savedPath;
+                }
+            }
+        }
+        
+        // Delete old option images
+        foreach ($existingOptionImages as $oldImage) {
+            deleteImageFile($oldImage);
+        }
+        
         // timeLimit: voice uses provided, MCQ uses 0
         $timeLimit = 0;
         if ($input['questionType'] === 'voice' && isset($input['timeLimit'])) {
@@ -419,8 +607,8 @@ function handlePut($conn) {
         
         // Update question
         $sql = "UPDATE questions SET 
-              questionText = ?, questionType = ?, questionFormat = ?, questionImage = ?,
-              answerType = ?, audioLink = ?, difficulty = ?, category = ?, timeLimit = ?
+              question_text = ?, question_type = ?, question_format = ?, question_image = ?,
+              answer_type = ?, audio_link = ?, difficulty = ?, category = ?, time_limit = ?
             WHERE id = ?";
         
         $stmt = $conn->prepare($sql);
@@ -429,7 +617,7 @@ function handlePut($conn) {
             $input['questionText'],
             $input['questionType'],
             $input['questionFormat'],
-            $input['questionImage'],
+            $questionImagePath,
             $input['answerType'],
             $input['audioLink'],
             $input['difficulty'],
@@ -454,7 +642,7 @@ function handlePut($conn) {
         if (!empty($input['options']) && is_array($input['options'])) {
             foreach ($input['options'] as $index => $option) {
                 $sql = "INSERT INTO question_options (
-                    question_id, text, image, option_order
+                    question_id, option_text, option_image, option_order
                 ) VALUES (?, ?, ?, ?)";
                 $stmt = $conn->prepare($sql);
                 $stmt->bind_param(
@@ -580,8 +768,8 @@ function getQuestionOptions($conn, $questionId) {
     $options = [];
     while ($row = $result->fetch_assoc()) {
         $options[] = [
-            'text' => $row['text'],
-            'image' => $row['image']
+            'text' => $row['option_text'],
+            'image' => getImageUrl($row['option_image'])
         ];
     }
     

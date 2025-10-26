@@ -176,15 +176,33 @@ function getAllExams($conn) {
         
         $exams = [];
         while ($row = $result->fetch_assoc()) {
-            $exam = $row;
+            // Transform snake_case to camelCase for frontend compatibility
+            $exam = [
+                'id' => $row['id'],
+                'examName' => $row['exam_name'],
+                'description' => $row['description'],
+                'examType' => $row['exam_type'],
+                'duration' => $row['duration'],
+                'numberOfQuestions' => $row['number_of_questions'],
+                'totalMarks' => $row['total_marks'],
+                'eligibilityType' => $row['eligibility_type'],
+                'selectedBatch' => $row['selected_batch'],
+                'mcqCount' => $row['mcq_count'],
+                'voiceCount' => $row['voice_count'],
+                'createdAt' => $row['created_at'],
+                'updatedAt' => $row['updated_at'],
+                'isActive' => $row['is_active'],
+                'totalQuestionsAssigned' => $row['total_questions_assigned'],
+                'totalStudentsAssigned' => $row['total_students_assigned']
+            ];
             
             // Get assigned students for this exam
-            if ($exam['eligibility_type'] === 'individual') {
-                $exam['assigned_students'] = getAssignedStudentIds($conn, $exam['id']);
+            if ($row['eligibility_type'] === 'individual') {
+                $exam['assignedStudents'] = getAssignedStudentIds($conn, $row['id']);
             }
             
             // Get assigned questions for this exam
-            $exam['assigned_questions'] = getAssignedQuestionIds($conn, $exam['id']);
+            $exam['assignedQuestions'] = getAssignedQuestionIds($conn, $row['id']);
             
             $exams[] = $exam;
         }
@@ -228,15 +246,33 @@ function getSingleExam($conn) {
             return;
         }
         
-        $exam = $result->fetch_assoc();
+        $row = $result->fetch_assoc();
+        
+        // Transform snake_case to camelCase for frontend compatibility
+        $exam = [
+            'id' => $row['id'],
+            'examName' => $row['exam_name'],
+            'description' => $row['description'],
+            'examType' => $row['exam_type'],
+            'duration' => $row['duration'],
+            'numberOfQuestions' => $row['number_of_questions'],
+            'totalMarks' => $row['total_marks'],
+            'eligibilityType' => $row['eligibility_type'],
+            'selectedBatch' => $row['selected_batch'],
+            'mcqCount' => $row['mcq_count'],
+            'voiceCount' => $row['voice_count'],
+            'createdAt' => $row['created_at'],
+            'updatedAt' => $row['updated_at'],
+            'isActive' => $row['is_active']
+        ];
         
         // Get assigned students
-        if ($exam['eligibility_type'] === 'individual') {
-            $exam['assigned_students'] = getAssignedStudentIds($conn, $exam['id']);
+        if ($row['eligibility_type'] === 'individual') {
+            $exam['assignedStudents'] = getAssignedStudentIds($conn, $row['id']);
         }
         
         // Get assigned questions
-        $exam['assigned_questions'] = getAssignedQuestionIds($conn, $exam['id']);
+        $exam['assignedQuestions'] = getAssignedQuestionIds($conn, $row['id']);
         
         echo json_encode([
             'success' => true,
@@ -338,24 +374,24 @@ function getAllQuestions($conn) {
         
         $sql = "SELECT 
                     id,
-                    questionText,
-                    questionType,
-                    questionFormat,
-                    questionImage,
-                    answerType,
-                    audioLink,
+                    question_text,
+                    question_type,
+                    question_format,
+                    question_image,
+                    answer_type,
+                    audio_link,
                     difficulty,
                     category,
-                    timeLimit,
+                    time_limit,
                     created_at
                 FROM questions 
                 WHERE is_active = 1";
         
         // Filter by question type if exam_type is specified
         if ($examType === 'mcq') {
-            $sql .= " AND questionType = 'mcq'";
+            $sql .= " AND question_type = 'mcq'";
         } elseif ($examType === 'voice') {
-            $sql .= " AND questionType = 'voice'";
+            $sql .= " AND question_type = 'voice'";
         }
         // If examType is 'both' or not specified, show all questions
         
@@ -369,7 +405,21 @@ function getAllQuestions($conn) {
         
         $questions = [];
         while ($row = $result->fetch_assoc()) {
-            $questions[] = $row;
+            // Transform snake_case to camelCase for frontend compatibility
+            $question = [
+                'id' => $row['id'],
+                'questionText' => $row['question_text'],
+                'questionType' => $row['question_type'],
+                'questionFormat' => $row['question_format'],
+                'questionImage' => $row['question_image'],
+                'answerType' => $row['answer_type'],
+                'audioLink' => $row['audio_link'],
+                'difficulty' => $row['difficulty'],
+                'category' => $row['category'],
+                'timeLimit' => $row['time_limit'],
+                'createdAt' => $row['created_at']
+            ];
+            $questions[] = $question;
         }
         
         echo json_encode([
@@ -456,7 +506,24 @@ function getExamQuestions($conn) {
         
         $questions = [];
         while ($row = $result->fetch_assoc()) {
-            $questions[] = $row;
+            // Transform snake_case to camelCase for frontend compatibility
+            $question = [
+                'id' => $row['id'],
+                'questionText' => $row['question_text'],
+                'questionType' => $row['question_type'],
+                'questionFormat' => $row['question_format'],
+                'questionImage' => $row['question_image'],
+                'answerType' => $row['answer_type'],
+                'audioLink' => $row['audio_link'],
+                'difficulty' => $row['difficulty'],
+                'category' => $row['category'],
+                'timeLimit' => $row['time_limit'],
+                'createdAt' => $row['created_at'],
+                'updatedAt' => $row['updated_at'],
+                'isActive' => $row['is_active'],
+                'questionOrder' => $row['question_order']
+            ];
+            $questions[] = $question;
         }
         
         echo json_encode([

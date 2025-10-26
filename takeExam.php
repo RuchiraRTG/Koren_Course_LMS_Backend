@@ -5,6 +5,30 @@
 require_once __DIR__ . '/config/database.php';
 require_once __DIR__ . '/includes/functions.php';
 
+// CORS Configuration for React Frontend
+$allowedOrigins = [
+    'http://localhost:3000',
+    'http://localhost:5173',
+    'http://localhost:5174',
+    'http://127.0.0.1:3000',
+    'http://127.0.0.1:5173',
+    'http://127.0.0.1:5174'
+];
+
+$origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+if (in_array($origin, $allowedOrigins)) {
+    header("Access-Control-Allow-Origin: $origin");
+    header("Access-Control-Allow-Credentials: true");
+    header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
+    header("Access-Control-Allow-Headers: Content-Type, Accept, Authorization");
+}
+
+// Handle preflight OPTIONS requests
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    http_response_code(200);
+    exit();
+}
+
 startSecureSession();
 header('Content-Type: application/json');
 
@@ -50,13 +74,32 @@ function getParam($name, $default = null) {
 
 function randToken($len = 32) { return bin2hex(random_bytes($len/2)); }
 
+// Helper function to convert image path to full URL
+function getImageUrl($imagePath) {
+    if (empty($imagePath) || $imagePath === null) {
+        return null;
+    }
+    
+    // If it's already a full URL, return it
+    if (strpos($imagePath, 'http://') === 0 || strpos($imagePath, 'https://') === 0) {
+        return $imagePath;
+    }
+    
+    // Get the protocol and host
+    $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https' : 'http';
+    $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+    
+    // Return full URL
+    return $protocol . '://' . $host . '/' . $imagePath;
+}
+
 function mapQuestionRow($row) {
     return [
         'id' => intval($row['id']),
         'questionType' => $row['questionType'],
         'questionText' => $row['questionText'],
         'questionFormat' => $row['questionFormat'],
-        'questionImage' => $row['questionImage'],
+        'questionImage' => getImageUrl($row['questionImage']),
         'answerType' => $row['answerType'],
         'audioLink' => $row['audioLink'],
         'difficulty' => $row['difficulty'],
@@ -130,7 +173,10 @@ function getQuestionOptions($conn, $questionId, $schema = null) {
     $res = $stmt->get_result();
     $options = [];
     while ($r = $res->fetch_assoc()) {
-        $options[] = [ 'text' => $r['option_text'], 'image' => $r['option_image'] ];
+        $options[] = [ 
+            'text' => $r['option_text'], 
+            'image' => getImageUrl($r['option_image'])
+        ];
     }
     $stmt->close();
     return $options;
@@ -383,6 +429,7 @@ try {
             usleep(500000); // 0.5s
 
             $userId = isset($_SESSION['user_id']) ? intval($_SESSION['user_id']) : null;
+            $userType = $_SESSION['user_type'] ?? null;
 
             // Validate and compute per-question results
             $resultsPerQ = [];
@@ -429,13 +476,74 @@ try {
 
             if ($ins && method_exists($ins, 'close')) { $ins->close(); }
 
+            // Calculate score and percentage
+            $percentage = $total > 0 ? round(($correct/$total) * 100, 2) : 0;
+            
+            // Variable to store the exam result ID if saved
+            $examResultId = null;
+            
+            // If user is a student, store result in exam_results table
+            if ($userType === 'student' && $userId !== null) {
+                try {
+                    // Calculate time taken (in seconds) from exam start
+                    $startTime = $attempt['started_at'] ?? time();
+                    $timeTaken = time() - $startTime;
+                    
+                    // For mock exams, we don't have an exam_id, so we'll use NULL
+                    // You can modify this logic if you want to link mock exams to specific exams
+                    $examId = getParam('exam_id'); // Optional exam_id if taking a real exam
+                    $examId = $examId ? intval($examId) : null;
+                    
+                    // Calculate score based on total marks (assume 1 mark per question by default)
+                    $totalMarks = $total; // Can be customized based on exam settings
+                    // score column is DECIMAL(5,2), so convert correct answers to decimal
+                    $scoreDecimal = floatval($correct);
+                    
+                    // Debug logging
+                    error_log("Saving exam result for student: userType=$userType, userId=$userId, score=$scoreDecimal, total=$totalMarks, percentage=$percentage");
+                    
+                    // Insert into exam_results table
+                    // Note: exam_id can be NULL for mock exams, student_id is required
+                    // score and percentage are DECIMAL(5,2), total_marks and time_taken are INT
+                    // status can be: pending, in_progress, completed, submitted
+                    $resultSql = "INSERT INTO exam_results 
+                                  (exam_id, student_id, score, total_marks, percentage, time_taken, status, started_at, submitted_at) 
+                                  VALUES (?, ?, ?, ?, ?, ?, 'submitted', FROM_UNIXTIME(?), NOW())";
+                    $resultStmt = $conn->prepare($resultSql);
+                    
+                    if (!$resultStmt) {
+                        error_log("Failed to prepare exam_results insert: " . $conn->error);
+                    } else {
+                        // Bind parameters: i=integer, d=double/decimal, s=string
+                        // exam_id (int or NULL), student_id (int), score (decimal), total_marks (int), 
+                        // percentage (decimal), time_taken (int), startTime (int for FROM_UNIXTIME)
+                        $resultStmt->bind_param('iididii', $examId, $userId, $scoreDecimal, $totalMarks, $percentage, $timeTaken, $startTime);
+                        
+                        if ($resultStmt->execute()) {
+                            $examResultId = $conn->insert_id;
+                            error_log("Successfully saved exam result with ID: $examResultId for student ID: $userId");
+                        } else {
+                            error_log("Failed to execute exam_results insert: " . $resultStmt->error);
+                        }
+                        
+                        $resultStmt->close();
+                    }
+                } catch (Exception $e) {
+                    error_log("Exception while saving exam result: " . $e->getMessage());
+                }
+            } else {
+                // Log why result wasn't saved
+                error_log("Exam result NOT saved: userType=$userType, userId=" . ($userId ?? 'NULL'));
+            }
+
             ok('Results calculated', [
                 'attemptToken' => $token,
+                'examResultId' => $examResultId, // Include the saved result ID
                 'summary' => [
                     'total' => $total,
                     'correct' => $correct,
                     'incorrect' => $incorrect,
-                    'percentage' => $total > 0 ? round(($correct/$total) * 100) : 0,
+                    'percentage' => $percentage,
                 ],
                 'details' => $resultsPerQ
             ]);
