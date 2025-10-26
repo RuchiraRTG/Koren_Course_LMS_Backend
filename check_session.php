@@ -29,7 +29,7 @@ if (isLoggedIn()) {
         $conn = getDBConnection();
         
         // Get user details from database
-        $stmt = $conn->prepare("SELECT id, first_name, last_name, email, phone_number, nic_number, created_at, last_login FROM users WHERE id = ?");
+    $stmt = $conn->prepare("SELECT id, first_name, last_name, email, phone_number, nic_number, role, created_at, last_login FROM users WHERE id = ?");
         $stmt->bind_param("i", $userId);
         $stmt->execute();
         $result = $stmt->get_result();
@@ -48,6 +48,7 @@ if (isLoggedIn()) {
                 'phone_number' => $user['phone_number'],
                 'nic_number' => $user['nic_number'],
                 'session_token' => $_SESSION['session_token'] ?? null,
+                'role' => $_SESSION['user_role'] ?? $user['role'] ?? 'user',
                 'created_at' => $user['created_at'],
                 'last_login' => $user['last_login']
             ];

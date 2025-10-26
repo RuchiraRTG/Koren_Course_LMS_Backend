@@ -101,6 +101,25 @@ function isLoggedIn() {
     return isset($_SESSION['user_id']) && isset($_SESSION['user_email']);
 }
 
+/**
+ * Check if current user is an admin
+ */
+function isAdmin() {
+    startSecureSession();
+    return isset($_SESSION['user_role']) && $_SESSION['user_role'] === 'admin';
+}
+
+/**
+ * Require a logged-in admin; redirect otherwise
+ */
+function requireAdmin($redirectTo = '/signin.php') {
+    startSecureSession();
+    if (!isLoggedIn() || !isAdmin()) {
+        header('Location: ' . $redirectTo);
+        exit();
+    }
+}
+
  
 function redirect($url) {
     header("Location: " . $url);
