@@ -39,7 +39,7 @@ function initializeDatabase() {
     
     $conn->select_db(DB_NAME);
     
-    // Create users table (includes role column for RBAC)
+    // Create users tableS (includes role column for RBAC)
     $sql = "CREATE TABLE IF NOT EXISTS users (
         id INT(11) UNSIGNED AUTO_INCREMENT PRIMARY KEY,
         first_name VARCHAR(100) NOT NULL,
